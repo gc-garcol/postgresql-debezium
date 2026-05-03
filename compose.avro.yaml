@@ -1,0 +1,134 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: debezium
+      POSTGRES_USER: username
+      POSTGRES_PASSWORD: password
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U username -d referraldb" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      # Address the broker advertises to clients that connect to the Kafka API.
+      # Use the internal addresses to connect to the Redpanda brokers'
+      # from inside the same Docker network.
+      # Use the external addresses to connect to the Redpanda brokers'
+      # from outside the Docker network.
+      - --advertise-kafka-addr internal://kafka:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      # Address the broker advertises to clients that connect to the HTTP Proxy.
+      - --advertise-pandaproxy-addr internal://kafka:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      # Redpanda brokers use the RPC API to communicate with each other internally.
+      - --rpc-addr kafka:33145
+      - --advertise-rpc-addr kafka:33145
+      # Mode dev-container uses well-known configuration properties for development in containers.
+      - --mode dev-container
+      # Tells Seastar (the framework Redpanda uses under the hood) to use 1 core on the system.
+      - --smp 1
+      - --default-log-level=info
+    image: docker.redpanda.com/redpandadata/redpanda:v24.1.7
+    container_name: kafka
+    volumes:
+      - kafka:/var/lib/redpanda/data
+    ports:
+      - 18081:18081
+      - 18082:18082
+      - 19092:19092
+      - 19644:9644
+  console:
+    container_name: kafka-console
+    image: docker.redpanda.com/redpandadata/console:v2.6.0
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["kafka:9092"]
+          schemaRegistry:
+            enabled: true
+            urls: ["http://schema-registry:8080/apis/ccompat/v7"]
+        redpanda:
+          adminApi:
+            enabled: true
+            urls: ["http://kafka:9644"]
+    ports:
+      - 8082:8080
+    depends_on:
+      kafka:
+        condition: service_started
+      schema-registry:
+        condition: service_healthy
+  schema-registry:
+    container_name: schema-registry
+    image: apicurio/apicurio-registry-mem:2.6.13.Final
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/apis/registry/v2/system/info || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  connect:
+    container_name: connect
+    image: quay.io/debezium/connect:3.5
+    ports:
+      - "8083:8083"
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - ENABLE_APICURIO_CONVERTERS=true
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=my_connect_configs
+      - OFFSET_STORAGE_TOPIC=my_connect_offsets
+
+      - KEY_CONVERTER=io.apicurio.registry.utils.converter.AvroConverter
+      - VALUE_CONVERTER=io.apicurio.registry.utils.converter.AvroConverter
+
+      - CONNECT_KEY_CONVERTER=io.apicurio.registry.utils.converter.AvroConverter
+      - CONNECT_KEY_CONVERTER_APICURIO_REGISTRY_URL=http://schema-registry:8080/apis/registry/v2
+      - CONNECT_KEY_CONVERTER_APICURIO_REGISTRY_AUTO-REGISTER=true
+      - CONNECT_KEY_CONVERTER_APICURIO_REGISTRY_FIND-LATEST=true
+
+      - CONNECT_VALUE_CONVERTER=io.apicurio.registry.utils.converter.AvroConverter
+      - CONNECT_VALUE_CONVERTER_APICURIO_REGISTRY_URL=http://schema-registry:8080/apis/registry/v2
+      - CONNECT_VALUE_CONVERTER_APICURIO_REGISTRY_AUTO-REGISTER=true
+      - CONNECT_VALUE_CONVERTER_APICURIO_REGISTRY_FIND-LATEST=true
+
+      - CONNECT_SCHEMA_NAME_ADJUSTMENT_MODE=avro
+  debezium-ui:
+    container_name: debezium-ui
+    image: quay.io/debezium/debezium-ui:1.9
+    platform: linux/amd64
+    ports:
+      - "8081:8080"
+    environment:
+      # - KAFKA_CONNECT_CLUSTERS=http://connect:8083
+      - KAFKA_CONNECT_URIS=http://connect:8083
+    depends_on:
+      - connect
+volumes:
+  kafka:
+    driver: local

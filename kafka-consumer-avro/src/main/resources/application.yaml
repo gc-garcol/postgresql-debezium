@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: kafka-consumer-avro
+  kafka:
+    bootstrap-servers: localhost:19092
+    consumer:
+      group-id: kafka-consumer-avro-group
+      auto-offset-reset: earliest
+      key-deserializer: io.apicurio.registry.serde.avro.AvroKafkaDeserializer
+      value-deserializer: io.apicurio.registry.serde.avro.AvroKafkaDeserializer
+      properties:
+        apicurio.registry.url: http://localhost:8080/apis/registry/v2
+        apicurio.registry.auto-register: false
+        apicurio.registry.find-latest: true
+
+server:
+  port: 9000
