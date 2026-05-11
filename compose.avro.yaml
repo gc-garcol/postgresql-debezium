@@ -80,6 +80,7 @@ services:
   schema-registry:
     container_name: schema-registry
     image: apicurio/apicurio-registry-mem:2.6.13.Final
+    # UI is bundled — accessible at http://localhost:8080/ui
     ports:
       - "8080:8080"
     healthcheck:
@@ -111,11 +112,13 @@ services:
       - CONNECT_KEY_CONVERTER_APICURIO_REGISTRY_URL=http://schema-registry:8080/apis/registry/v2
       - CONNECT_KEY_CONVERTER_APICURIO_REGISTRY_AUTO-REGISTER=true
       - CONNECT_KEY_CONVERTER_APICURIO_REGISTRY_FIND-LATEST=true
+      - CONNECT_KEY_CONVERTER_APICURIO_REGISTRY_ENABLE_CONFLUENT_ID_HANDLER=true
 
       - CONNECT_VALUE_CONVERTER=io.apicurio.registry.utils.converter.AvroConverter
       - CONNECT_VALUE_CONVERTER_APICURIO_REGISTRY_URL=http://schema-registry:8080/apis/registry/v2
       - CONNECT_VALUE_CONVERTER_APICURIO_REGISTRY_AUTO-REGISTER=true
       - CONNECT_VALUE_CONVERTER_APICURIO_REGISTRY_FIND-LATEST=true
+      - CONNECT_VALUE_CONVERTER_APICURIO_REGISTRY_ENABLE_CONFLUENT_ID_HANDLER=true
 
       - CONNECT_SCHEMA_NAME_ADJUSTMENT_MODE=avro
   debezium-ui:

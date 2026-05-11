@@ -10,11 +10,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class CustomerCdcConsumer {
 
-    @KafkaListener(topics = "debezium-cdc.public.customers")
+    @KafkaListener(topics = "debezium-cdc.public.customers", groupId = "${consumer.group-id.customers}")
     public void consume(ConsumerRecord<GenericRecord, GenericRecord> record) {
+        GenericRecord key = record.key();
         GenericRecord value = record.value();
 
-        log.info("[RECEIVE] {}", value);
+        log.info("[RECEIVE] key: {} | value: {}", key, value);
 
         if (value == null) {
             return;

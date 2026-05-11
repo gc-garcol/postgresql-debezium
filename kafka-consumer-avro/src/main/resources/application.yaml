@@ -4,7 +4,6 @@ spring:
   kafka:
     bootstrap-servers: localhost:19092
     consumer:
-      group-id: kafka-consumer-avro-group
       auto-offset-reset: earliest
       key-deserializer: io.apicurio.registry.serde.avro.AvroKafkaDeserializer
       value-deserializer: io.apicurio.registry.serde.avro.AvroKafkaDeserializer
@@ -12,6 +11,14 @@ spring:
         apicurio.registry.url: http://localhost:8080/apis/registry/v2
         apicurio.registry.auto-register: false
         apicurio.registry.find-latest: true
+        apicurio.registry.enable.confluent.id.handler: true
+
+---
+
+consumer.group-id:
+  customers: dev.debezium-cdc.public.customers
+
+---
 
 server:
   port: 9000
