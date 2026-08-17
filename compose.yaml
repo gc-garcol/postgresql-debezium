@@ -16,11 +16,33 @@ services:
       - ./initdb:/docker-entrypoint-initdb.d
 
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U username -d referraldb" ]
+      test: [ "CMD-SHELL", "pg_isready -U username -d debezium" ]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  postgres-sink:
+    image: postgres:17-alpine
+    container_name: postgres-sink
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: debezium
+      POSTGRES_USER: username
+      POSTGRES_PASSWORD: password
+
+    ports:
+      - "5433:5432"
+
+    # Only creates the `be` schema — the sink connector creates the tables.
+    volumes:
+      - ./initdb-sink:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U username -d debezium" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   kafka:
     command:
       - redpanda
@@ -43,6 +65,11 @@ services:
       - --mode dev-container
       # Tells Seastar (the framework Redpanda uses under the hood) to use 1 core on the system.
       - --smp 1
+      # Keep every CDC record forever (the default is 7 days) so the sink can be
+      # replayed from offset 0 at any time. Cluster properties are applied when the
+      # `kafka` volume is first created — on an existing volume set it with
+      # `rpk cluster config set log_retention_ms -1` instead.
+      - --set redpanda.log_retention_ms=-1
       - --default-log-level=info
     image: docker.redpanda.com/redpandadata/redpanda:v24.1.7
     container_name: kafka
@@ -82,6 +109,7 @@ services:
     depends_on:
       - kafka
       - postgres
+      - postgres-sink
     environment:
       - BOOTSTRAP_SERVERS=kafka:9092
       - GROUP_ID=1
@@ -91,8 +119,11 @@ services:
       - PLUGIN_PATH=/kafka/connect
       - KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
       - VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
-      - KEY_CONVERTER_SCHEMAS_ENABLE=false
-      - VALUE_CONVERTER_SCHEMAS_ENABLE=false
+      # Envelopes must carry their Connect schema, otherwise the JDBC sink cannot
+      # infer column types. Only `CONNECT_`-prefixed variables become worker
+      # properties in this image — the bare `*_SCHEMAS_ENABLE` names are ignored.
+      - CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE=true
+      - CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE=true
       # - CONNECT_REST_EXTENSION_CLASSES=io.debezium.kcrestextension.DebeziumConnectRestExtension
   debezium-ui:
     container_name: debezium-ui

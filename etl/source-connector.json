@@ -1,0 +1,16 @@
+{
+  "name": "be-source-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.dbname": "debezium",
+    "database.user": "username",
+    "database.password": "password",
+    "topic.prefix": "be",
+    "table.include.list": "public.users,public.trades",
+    "plugin.name": "pgoutput",
+    "slot.name": "debezium_slot",
+    "publication.autocreate.mode": "filtered"
+  }
+}
